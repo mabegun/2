@@ -40,9 +40,10 @@ function prokb_ajax_get_projects() {
         );
     }
     
+    $projects = get_posts($args);
+    
     // Сотрудники видят только проекты, где они назначены на разделы
     if ($prokb_role === 'employee') {
-        $projects = get_posts($args);
         $filtered = array();
         
         foreach ($projects as $project) {
@@ -78,8 +79,6 @@ function prokb_ajax_get_projects() {
         }
         
         $projects = $filtered;
-    } else {
-        $projects = get_posts($args);
     }
     
     $result = array();
@@ -160,14 +159,14 @@ function prokb_ajax_create_project() {
         wp_send_json_error(array('message' => 'Ошибка создания проекта'));
     }
     
-    // Мета-поля проекта (новый формат)
+    // Мета-поля проекта (новый формат) - используем статусы совместимые с JS
     update_post_meta($project_id, 'project_code', $code);
     update_post_meta($project_id, 'project_address', $address);
     update_post_meta($project_id, 'project_type', $type);
     update_post_meta($project_id, 'project_deadline', $deadline);
     update_post_meta($project_id, 'project_client', $client);
     update_post_meta($project_id, 'project_description', $description);
-    update_post_meta($project_id, 'project_status', 'active');
+    update_post_meta($project_id, 'project_status', 'in_work'); // Совместимо с JS
     if ($gip_id) {
         update_post_meta($project_id, 'project_gip', $gip_id);
     }
@@ -176,7 +175,7 @@ function prokb_ajax_create_project() {
     update_post_meta($project_id, 'address', $address);
     update_post_meta($project_id, 'type', $type);
     update_post_meta($project_id, 'deadline', $deadline);
-    update_post_meta($project_id, 'status', 'active');
+    update_post_meta($project_id, 'status', 'in_work'); // Совместимо с JS
     if ($gip_id) {
         update_post_meta($project_id, 'gip_id', $gip_id);
     }
@@ -192,11 +191,11 @@ function prokb_ajax_create_project() {
             ));
             
             update_post_meta($section_id, 'section_code', $section_code);
-            update_post_meta($section_id, 'section_status', 'pending');
+            update_post_meta($section_id, 'section_status', 'not_started');
             update_post_meta($section_id, 'section_progress', 0);
             // Для совместимости
             update_post_meta($section_id, 'project_id', $project_id);
-            update_post_meta($section_id, 'status', 'pending');
+            update_post_meta($section_id, 'status', 'not_started');
         }
     }
     
@@ -292,7 +291,7 @@ function prokb_ajax_update_project() {
                 ));
                 
                 update_post_meta($section_id, 'section_code', $code);
-                update_post_meta($section_id, 'section_status', 'pending');
+                update_post_meta($section_id, 'section_status', 'not_started');
                 update_post_meta($section_id, 'project_id', $project_id);
             }
         }
@@ -360,8 +359,8 @@ function prokb_ajax_restore_project() {
     }
     
     // Обновляем оба формата
-    update_post_meta($project_id, 'project_status', 'active');
-    update_post_meta($project_id, 'status', 'active');
+    update_post_meta($project_id, 'project_status', 'in_work');
+    update_post_meta($project_id, 'status', 'in_work');
     delete_post_meta($project_id, 'archived_at');
     delete_post_meta($project_id, 'archive_reason');
     
