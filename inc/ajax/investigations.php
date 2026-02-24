@@ -30,6 +30,17 @@ function prokb_ajax_get_standard_investigations() {
         );
     }
     
+    // Если пусто, возвращаем стандартный список
+    if (empty($result)) {
+        $result = array(
+            array('id' => 0, 'name' => 'Инженерно-геодезические изыскания'),
+            array('id' => 0, 'name' => 'Инженерно-геологические изыскания'),
+            array('id' => 0, 'name' => 'Инженерно-гидрометеорологические изыскания'),
+            array('id' => 0, 'name' => 'Инженерно-экологические изыскания'),
+            array('id' => 0, 'name' => 'Обследование строительных конструкций'),
+        );
+    }
+    
     wp_send_json_success($result);
 }
 add_action('wp_ajax_prokb_get_standard_investigations', 'prokb_ajax_get_standard_investigations');
@@ -59,22 +70,50 @@ function prokb_ajax_add_project_investigation() {
         wp_send_json_error(array('message' => 'Обязательные поля не заполнены'));
     }
     
+    // Получаем название изыскания
+    $inv_name = $custom_name;
+    if ($standard_id) {
+        $standard_post = get_post($standard_id);
+        if ($standard_post && $standard_post->post_type === 'prokb_standard_investigation') {
+            $inv_name = $standard_post->post_title;
+        }
+    }
+    
     $inv_id = wp_insert_post(array(
         'post_type'    => 'prokb_project_investigation',
-        'post_title'   => $standard_id ? get_the_title($standard_id) : $custom_name,
+        'post_title'   => $inv_name,
         'post_status'  => 'publish',
     ));
+    
+    if (is_wp_error($inv_id)) {
+        wp_send_json_error(array('message' => 'Ошибка создания изыскания'));
+    }
     
     update_post_meta($inv_id, 'project_id', $project_id);
     
     if ($standard_id) {
         update_post_meta($inv_id, 'standard_investigation_id', $standard_id);
     } else {
+        update_post_meta($inv_id, 'is_custom', true);
         update_post_meta($inv_id, 'custom_name', $custom_name);
     }
     
     // Дополнительные поля
-    $fields = array('status', 'contractor_name', 'contractor_contact', 'contractor_phone', 'contractor_email', 'start_date', 'end_date');
+    $fields = array(
+        'status',
+        'contractor_name',
+        'contractor_contact',
+        'contractor_phone',
+        'contractor_email',
+        'start_date',
+        'end_date',
+        'contract_number',
+        'contract_date',
+        'contract_file',
+        'result_file',
+        'description',
+    );
+    
     foreach ($fields as $field) {
         if (isset($_POST[$field])) {
             update_post_meta($inv_id, $field, sanitize_text_field($_POST[$field]));
@@ -104,7 +143,21 @@ function prokb_ajax_update_project_investigation() {
         wp_send_json_error(array('message' => 'ID изыскания не указан'));
     }
     
-    $fields = array('status', 'contractor_name', 'contractor_contact', 'contractor_phone', 'contractor_email', 'start_date', 'end_date');
+    $fields = array(
+        'status',
+        'contractor_name',
+        'contractor_contact',
+        'contractor_phone',
+        'contractor_email',
+        'start_date',
+        'end_date',
+        'contract_number',
+        'contract_date',
+        'contract_file',
+        'result_file',
+        'description',
+    );
+    
     foreach ($fields as $field) {
         if (isset($_POST[$field])) {
             update_post_meta($inv_id, $field, sanitize_text_field($_POST[$field]));
