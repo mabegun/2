@@ -14,7 +14,19 @@ get_header();
 
 $is_logged_in = is_user_logged_in();
 $current_user_id = get_current_user_id();
-$prokb_role = $is_logged_in ? get_user_meta($current_user_id, 'prokb_role', true) : null;
+$prokb_role = null;
+if ($is_logged_in) {
+    $user = get_user_by('ID', $current_user_id);
+    if (in_array('prokb_director', $user->roles)) {
+        $prokb_role = 'director';
+    } elseif (in_array('prokb_gip', $user->roles)) {
+        $prokb_role = 'gip';
+    } elseif (in_array('prokb_employee', $user->roles)) {
+        $prokb_role = 'employee';
+    } else {
+        $prokb_role = get_user_meta($current_user_id, 'prokb_role', true);
+    }
+}
 ?>
 
 <!-- Страница входа -->
