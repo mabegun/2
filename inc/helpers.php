@@ -46,6 +46,8 @@ function prokb_get_user_data($user_id) {
         'avatar_color'   => get_user_meta($user_id, 'prokb_avatar_color', true),
         'is_archived'    => get_user_meta($user_id, 'prokb_is_archived', true),
         'archive_reason' => get_user_meta($user_id, 'prokb_archive_reason', true),
+        'avatar_url'    => get_user_meta($user_id, 'prokb_avatar_url', true),
+        'comment'       => get_user_meta($user_id, 'prokb_comment', true),
     );
 }
 
