@@ -17,14 +17,14 @@ if (!defined('ABSPATH')) {
     <meta name="robots" content="noindex, nofollow">
     <link rel="profile" href="https://gmpg.org/xfn/11">
     <?php wp_head(); ?>
-    <!-- Fallback for prokbData if wp_localize_script fails -->
+    <!-- JavaScript variables for AJAX -->
     <script>
-        if (typeof prokbData === 'undefined') {
-            var prokbData = {
-                ajaxUrl: '<?php echo admin_url('admin-ajax.php'); ?>',
-                nonce: '<?php echo wp_create_nonce('prokb_nonce'); ?>'
-            };
-        }
+        var prokbData = {
+            ajaxUrl: '<?php echo admin_url('admin-ajax.php'); ?>',
+            nonce: '<?php echo wp_create_nonce('prokb_nonce'); ?>'
+        };
+        // Compatibility alias
+        var ProKB = prokbData;
     </script>
 </head>
 <body <?php body_class(); ?>>
