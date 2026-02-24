@@ -55,7 +55,7 @@ function prokb_get_user_data($user_id) {
 function prokb_format_project($project, $detailed = false) {
     $id = $project->ID;
     
-    $status = get_post_meta($id, 'project_status', true) ?: get_post_meta($id, 'status', true) ?: 'active';
+    $status = get_post_meta($id, 'project_status', true) ?: get_post_meta($id, 'status', true) ?: 'in_work';
     $gip_id = get_post_meta($id, 'project_gip', true) ?: get_post_meta($id, 'gip_id', true);
     
     // Разделы (как дочерние посты)
