@@ -20,7 +20,7 @@ function prokb_ajax_get_projects() {
     }
     
     $user_id = get_current_user_id();
-    $prokb_role = get_user_meta($user_id, 'prokb_role', true);
+    $prokb_role = function_exists('prokb_get_user_role') ? prokb_get_user_role($user_id) : get_user_meta($user_id, 'prokb_role', true);
     $status_filter = sanitize_text_field($_POST['status'] ?? '');
     
     $args = array(
@@ -34,10 +34,9 @@ function prokb_ajax_get_projects() {
     // Фильтр по статусу
     if ($status_filter) {
         $args['meta_query'] = array(
-            array(
-                'key'   => 'status',
-                'value' => $status_filter,
-            ),
+            'relation' => 'OR',
+            array('key' => 'project_status', 'value' => $status_filter),
+            array('key' => 'status', 'value' => $status_filter),
         );
     }
     
@@ -47,16 +46,26 @@ function prokb_ajax_get_projects() {
         $filtered = array();
         
         foreach ($projects as $project) {
+            // Ищем разделы как дочерние посты
             $sections = get_posts(array(
                 'post_type'      => 'prokb_section',
                 'posts_per_page' => -1,
-                'meta_key'       => 'project_id',
-                'meta_value'     => $project->ID,
+                'post_parent'    => $project->ID,
             ));
+            
+            // Fallback: ищем по мета-полю
+            if (empty($sections)) {
+                $sections = get_posts(array(
+                    'post_type'      => 'prokb_section',
+                    'posts_per_page' => -1,
+                    'meta_key'       => 'project_id',
+                    'meta_value'     => $project->ID,
+                ));
+            }
             
             $assigned = false;
             foreach ($sections as $section) {
-                $assignee = get_post_meta($section->ID, 'assignee_id', true);
+                $assignee = get_post_meta($section->ID, 'section_assignee', true) ?: get_post_meta($section->ID, 'assignee_id', true);
                 if ($assignee == $user_id) {
                     $assigned = true;
                     break;
@@ -119,7 +128,7 @@ function prokb_ajax_create_project() {
     }
     
     $user_id = get_current_user_id();
-    $prokb_role = get_user_meta($user_id, 'prokb_role', true);
+    $prokb_role = function_exists('prokb_get_user_role') ? prokb_get_user_role($user_id) : get_user_meta($user_id, 'prokb_role', true);
     
     if (!in_array($prokb_role, array('director', 'gip'))) {
         wp_send_json_error(array('message' => 'Нет прав для создания проекта'));
@@ -132,6 +141,7 @@ function prokb_ajax_create_project() {
     $deadline = sanitize_text_field($_POST['deadline'] ?? '');
     $expertise = sanitize_text_field($_POST['expertise'] ?? 'none');
     $gip_id = intval($_POST['gip_id'] ?? 0);
+    $client = sanitize_text_field($_POST['client'] ?? '');
     $description = sanitize_textarea_field($_POST['description'] ?? '');
     $sections = isset($_POST['sections']) ? json_decode(stripslashes($_POST['sections']), true) : array();
     
@@ -150,31 +160,43 @@ function prokb_ajax_create_project() {
         wp_send_json_error(array('message' => 'Ошибка создания проекта'));
     }
     
-    // Мета-поля проекта
+    // Мета-поля проекта (новый формат)
+    update_post_meta($project_id, 'project_code', $code);
+    update_post_meta($project_id, 'project_address', $address);
+    update_post_meta($project_id, 'project_type', $type);
+    update_post_meta($project_id, 'project_deadline', $deadline);
+    update_post_meta($project_id, 'project_client', $client);
+    update_post_meta($project_id, 'project_description', $description);
+    update_post_meta($project_id, 'project_status', 'active');
+    if ($gip_id) {
+        update_post_meta($project_id, 'project_gip', $gip_id);
+    }
+    // Для совместимости со старым форматом
     update_post_meta($project_id, 'code', $code);
     update_post_meta($project_id, 'address', $address);
     update_post_meta($project_id, 'type', $type);
     update_post_meta($project_id, 'deadline', $deadline);
-    update_post_meta($project_id, 'expertise', $expertise);
-    update_post_meta($project_id, 'description', $description);
-    update_post_meta($project_id, 'status', 'in_work');
+    update_post_meta($project_id, 'status', 'active');
     if ($gip_id) {
         update_post_meta($project_id, 'gip_id', $gip_id);
     }
     
-    // Создаём разделы
+    // Создаём разделы как дочерние посты
     if (!empty($sections)) {
         foreach ($sections as $section_code) {
             $section_id = wp_insert_post(array(
                 'post_type'    => 'prokb_section',
-                'post_title'   => $section_code,
+                'post_title'   => $section_code . ' - ' . prokb_get_section_description($section_code),
                 'post_status'  => 'publish',
+                'post_parent'  => $project_id,
             ));
             
-            update_post_meta($section_id, 'project_id', $project_id);
             update_post_meta($section_id, 'section_code', $section_code);
-            update_post_meta($section_id, 'status', 'not_started');
-            update_post_meta($section_id, 'description', prokb_get_section_description($section_code));
+            update_post_meta($section_id, 'section_status', 'pending');
+            update_post_meta($section_id, 'section_progress', 0);
+            // Для совместимости
+            update_post_meta($section_id, 'project_id', $project_id);
+            update_post_meta($section_id, 'status', 'pending');
         }
     }
     
@@ -196,7 +218,7 @@ function prokb_ajax_update_project() {
     }
     
     $user_id = get_current_user_id();
-    $prokb_role = get_user_meta($user_id, 'prokb_role', true);
+    $prokb_role = function_exists('prokb_get_user_role') ? prokb_get_user_role($user_id) : get_user_meta($user_id, 'prokb_role', true);
     
     if (!in_array($prokb_role, array('director', 'gip'))) {
         wp_send_json_error(array('message' => 'Нет прав для редактирования проекта'));
@@ -222,11 +244,23 @@ function prokb_ajax_update_project() {
         ));
     }
     
-    // Обновляем поля
-    $fields = array('code', 'address', 'type', 'deadline', 'expertise', 'description', 'status', 'gip_id');
-    foreach ($fields as $field) {
+    // Обновляем поля (оба формата для совместимости)
+    $field_mapping = array(
+        'code'     => array('project_code', 'code'),
+        'address'  => array('project_address', 'address'),
+        'type'     => array('project_type', 'type'),
+        'deadline' => array('project_deadline', 'deadline'),
+        'client'   => array('project_client', 'client'),
+        'description' => array('project_description', 'description'),
+        'status'   => array('project_status', 'status'),
+        'gip_id'   => array('project_gip', 'gip_id'),
+    );
+    
+    foreach ($field_mapping as $field => $keys) {
         if (isset($_POST[$field])) {
-            update_post_meta($project_id, $field, sanitize_text_field($_POST[$field]));
+            $value = sanitize_text_field($_POST[$field]);
+            update_post_meta($project_id, $keys[0], $value);
+            update_post_meta($project_id, $keys[1], $value);
         }
     }
     
@@ -234,12 +268,11 @@ function prokb_ajax_update_project() {
     if (isset($_POST['sections'])) {
         $new_sections = json_decode(stripslashes($_POST['sections']), true);
         
-        // Получаем текущие разделы
+        // Получаем текущие разделы (дочерние посты)
         $current_sections = get_posts(array(
             'post_type'      => 'prokb_section',
             'posts_per_page' => -1,
-            'meta_key'       => 'project_id',
-            'meta_value'     => $project_id,
+            'post_parent'    => $project_id,
         ));
         
         $current_codes = array();
@@ -253,14 +286,14 @@ function prokb_ajax_update_project() {
             if (!isset($current_codes[$code])) {
                 $section_id = wp_insert_post(array(
                     'post_type'    => 'prokb_section',
-                    'post_title'   => $code,
+                    'post_title'   => $code . ' - ' . prokb_get_section_description($code),
                     'post_status'  => 'publish',
+                    'post_parent'  => $project_id,
                 ));
                 
-                update_post_meta($section_id, 'project_id', $project_id);
                 update_post_meta($section_id, 'section_code', $code);
-                update_post_meta($section_id, 'status', 'not_started');
-                update_post_meta($section_id, 'description', prokb_get_section_description($code));
+                update_post_meta($section_id, 'section_status', 'pending');
+                update_post_meta($section_id, 'project_id', $project_id);
             }
         }
     }
@@ -280,7 +313,7 @@ function prokb_ajax_archive_project() {
     }
     
     $user_id = get_current_user_id();
-    $prokb_role = get_user_meta($user_id, 'prokb_role', true);
+    $prokb_role = function_exists('prokb_get_user_role') ? prokb_get_user_role($user_id) : get_user_meta($user_id, 'prokb_role', true);
     
     if (!in_array($prokb_role, array('director', 'gip'))) {
         wp_send_json_error(array('message' => 'Нет прав для архивации проекта'));
@@ -293,6 +326,8 @@ function prokb_ajax_archive_project() {
         wp_send_json_error(array('message' => 'ID проекта не указан'));
     }
     
+    // Обновляем оба формата
+    update_post_meta($project_id, 'project_status', 'archived');
     update_post_meta($project_id, 'status', 'archived');
     update_post_meta($project_id, 'archived_at', current_time('mysql'));
     update_post_meta($project_id, 'archive_reason', $reason);
@@ -312,7 +347,7 @@ function prokb_ajax_restore_project() {
     }
     
     $user_id = get_current_user_id();
-    $prokb_role = get_user_meta($user_id, 'prokb_role', true);
+    $prokb_role = function_exists('prokb_get_user_role') ? prokb_get_user_role($user_id) : get_user_meta($user_id, 'prokb_role', true);
     
     if (!in_array($prokb_role, array('director', 'gip'))) {
         wp_send_json_error(array('message' => 'Нет прав для восстановления проекта'));
@@ -324,7 +359,9 @@ function prokb_ajax_restore_project() {
         wp_send_json_error(array('message' => 'ID проекта не указан'));
     }
     
-    update_post_meta($project_id, 'status', 'in_work');
+    // Обновляем оба формата
+    update_post_meta($project_id, 'project_status', 'active');
+    update_post_meta($project_id, 'status', 'active');
     delete_post_meta($project_id, 'archived_at');
     delete_post_meta($project_id, 'archive_reason');
     
@@ -343,7 +380,7 @@ function prokb_ajax_delete_project() {
     }
     
     $user_id = get_current_user_id();
-    $prokb_role = get_user_meta($user_id, 'prokb_role', true);
+    $prokb_role = function_exists('prokb_get_user_role') ? prokb_get_user_role($user_id) : get_user_meta($user_id, 'prokb_role', true);
     
     if ($prokb_role !== 'director') {
         wp_send_json_error(array('message' => 'Нет прав для удаления проекта'));
@@ -355,23 +392,36 @@ function prokb_ajax_delete_project() {
         wp_send_json_error(array('message' => 'ID проекта не указан'));
     }
     
-    // Удаляем связанные разделы
+    // Удаляем связанные разделы (дочерние посты)
     $sections = get_posts(array(
+        'post_type'      => 'prokb_section',
+        'posts_per_page' => -1,
+        'post_parent'    => $project_id,
+    ));
+    
+    // Fallback: разделы по мета-полю
+    $meta_sections = get_posts(array(
         'post_type'      => 'prokb_section',
         'posts_per_page' => -1,
         'meta_key'       => 'project_id',
         'meta_value'     => $project_id,
     ));
     
-    foreach ($sections as $section) {
-        wp_delete_post($section->ID, true);
+    $all_sections = array_merge($sections, $meta_sections);
+    $deleted_ids = array();
+    
+    foreach ($all_sections as $section) {
+        if (!in_array($section->ID, $deleted_ids)) {
+            wp_delete_post($section->ID, true);
+            $deleted_ids[] = $section->ID;
+        }
     }
     
     // Удаляем связанные контакты
     $contacts = get_posts(array(
         'post_type'      => 'prokb_contact',
         'posts_per_page' => -1,
-        'meta_key'       => 'project_id',
+        'meta_key'       => 'contact_project',
         'meta_value'     => $project_id,
     ));
     
