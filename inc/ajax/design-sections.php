@@ -51,7 +51,7 @@ function prokb_ajax_save_design_section() {
     }
     
     $user_id = get_current_user_id();
-    $prokb_role = get_user_meta($user_id, 'prokb_role', true);
+    $prokb_role = function_exists('prokb_get_user_role') ? prokb_get_user_role($user_id) : get_user_meta($user_id, 'prokb_role', true);
     
     if ($prokb_role !== 'director') {
         wp_send_json_error(array('message' => 'Нет прав для редактирования'));
@@ -103,7 +103,7 @@ function prokb_ajax_delete_design_section() {
     }
     
     $user_id = get_current_user_id();
-    $prokb_role = get_user_meta($user_id, 'prokb_role', true);
+    $prokb_role = function_exists('prokb_get_user_role') ? prokb_get_user_role($user_id) : get_user_meta($user_id, 'prokb_role', true);
     
     if ($prokb_role !== 'director') {
         wp_send_json_error(array('message' => 'Нет прав для удаления'));
