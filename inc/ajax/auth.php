@@ -28,8 +28,32 @@ function prokb_ajax_login() {
         wp_send_json_error(array('message' => 'Пользователь не найден'));
     }
     
-    $prokb_role = get_user_meta($user->ID, 'prokb_role', true);
-    if (!$prokb_role) {
+    // Проверяем WordPress роли ProKB
+    $has_prokb_role = false;
+    $prokb_role = '';
+    
+    if (in_array('prokb_director', $user->roles)) {
+        $has_prokb_role = true;
+        $prokb_role = 'director';
+    } elseif (in_array('prokb_gip', $user->roles)) {
+        $has_prokb_role = true;
+        $prokb_role = 'gip';
+    } elseif (in_array('prokb_employee', $user->roles)) {
+        $has_prokb_role = true;
+        $prokb_role = 'employee';
+    } else {
+        // Fallback на мета-поле для совместимости
+        $prokb_role = get_user_meta($user->ID, 'prokb_role', true);
+        if ($prokb_role) {
+            $has_prokb_role = true;
+            // Синхронизируем роль
+            if (function_exists('prokb_sync_user_role')) {
+                prokb_sync_user_role($user->ID);
+            }
+        }
+    }
+    
+    if (!$has_prokb_role) {
         wp_send_json_error(array('message' => 'У пользователя нет доступа к системе'));
     }
     
@@ -38,18 +62,19 @@ function prokb_ajax_login() {
         wp_send_json_error(array('message' => 'Пользователь архивирован'));
     }
     
-    // Для демо-режима: пароль от 4 символов
-    if (strlen($password) >= 4) {
-        wp_set_current_user($user->ID);
-        wp_set_auth_cookie($user->ID, true);
-        
-        wp_send_json_success(array(
-            'message' => 'Успешный вход',
-            'user'    => prokb_get_user_data($user->ID),
-        ));
+    // Проверка пароля через WordPress
+    if (!wp_check_password($password, $user->user_pass, $user->ID)) {
+        wp_send_json_error(array('message' => 'Неверный пароль'));
     }
     
-    wp_send_json_error(array('message' => 'Неверный пароль'));
+    // Успешная авторизация
+    wp_set_current_user($user->ID);
+    wp_set_auth_cookie($user->ID, true);
+    
+    wp_send_json_success(array(
+        'message' => 'Успешный вход',
+        'user'    => prokb_get_user_data($user->ID),
+    ));
 }
 add_action('wp_ajax_prokb_login', 'prokb_ajax_login');
 add_action('wp_ajax_nopriv_prokb_login', 'prokb_ajax_login');
@@ -73,9 +98,28 @@ function prokb_ajax_check_auth() {
     }
     
     $user_id = get_current_user_id();
-    $prokb_role = get_user_meta($user_id, 'prokb_role', true);
+    $user = get_user_by('ID', $user_id);
     
-    if (!$prokb_role) {
+    // Проверяем WordPress роли ProKB
+    $has_prokb_role = false;
+    
+    if (in_array('prokb_director', $user->roles) || 
+        in_array('prokb_gip', $user->roles) || 
+        in_array('prokb_employee', $user->roles)) {
+        $has_prokb_role = true;
+    } else {
+        // Fallback на мета-поле
+        $prokb_role = get_user_meta($user_id, 'prokb_role', true);
+        if ($prokb_role) {
+            $has_prokb_role = true;
+            // Синхронизируем роль
+            if (function_exists('prokb_sync_user_role')) {
+                prokb_sync_user_role($user_id);
+            }
+        }
+    }
+    
+    if (!$has_prokb_role) {
         wp_send_json_success(array('authenticated' => false));
     }
     
