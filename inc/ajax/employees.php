@@ -77,6 +77,10 @@ function prokb_ajax_get_employee_profile() {
     }
     
     $user_data = prokb_get_user_data($employee_id);
+
+    if (!$user_data) {
+        wp_send_json_error(array('message' => 'Пользователь не найден'));
+    }
     
     // Получаем разделы, назначенные сотруднику (как дочерние посты проектов)
     $sections = get_posts(array(
