@@ -29,13 +29,18 @@ function prokb_get_user_data($user_id) {
     $competencies = get_user_meta($user_id, 'prokb_competencies', true);
     $competencies_arr = $competencies ? json_decode($competencies, true) : array();
     
+    // Используем функцию из roles.php если она доступна
+    $role = function_exists('prokb_get_user_role') 
+        ? prokb_get_user_role($user_id) 
+        : get_user_meta($user_id, 'prokb_role', true);
+    
     return array(
         'id'             => $user->ID,
         'email'          => $user->user_email,
         'name'           => $name,
         'initials'       => $initials,
         'position'       => get_user_meta($user_id, 'prokb_position', true),
-        'role'           => get_user_meta($user_id, 'prokb_role', true),
+        'role'           => $role,
         'competencies'   => $competencies_arr,
         'phone'          => get_user_meta($user_id, 'prokb_phone', true),
         'avatar_color'   => get_user_meta($user_id, 'prokb_avatar_color', true),
@@ -50,26 +55,37 @@ function prokb_get_user_data($user_id) {
 function prokb_format_project($project, $detailed = false) {
     $id = $project->ID;
     
-    $status = get_post_meta($id, 'status', true) ?: 'in_work';
-    $gip_id = get_post_meta($id, 'gip_id', true);
+    $status = get_post_meta($id, 'project_status', true) ?: get_post_meta($id, 'status', true) ?: 'active';
+    $gip_id = get_post_meta($id, 'project_gip', true) ?: get_post_meta($id, 'gip_id', true);
     
-    // Разделы
+    // Разделы (как дочерние посты)
     $sections = get_posts(array(
         'post_type'      => 'prokb_section',
         'posts_per_page' => -1,
-        'meta_key'       => 'project_id',
-        'meta_value'     => $id,
+        'post_parent'    => $id,
         'orderby'        => 'ID',
         'order'          => 'ASC',
     ));
+    
+    // Если нет дочерних, пробуем найти по мета-полю
+    if (empty($sections)) {
+        $sections = get_posts(array(
+            'post_type'      => 'prokb_section',
+            'posts_per_page' => -1,
+            'meta_key'       => 'project_id',
+            'meta_value'     => $id,
+            'orderby'        => 'ID',
+            'order'          => 'ASC',
+        ));
+    }
     
     $sections_data = array();
     $completed = 0;
     $in_progress = 0;
     
     foreach ($sections as $section) {
-        $section_status = get_post_meta($section->ID, 'status', true) ?: 'not_started';
-        $assignee_id = get_post_meta($section->ID, 'assignee_id', true);
+        $section_status = get_post_meta($section->ID, 'section_status', true) ?: get_post_meta($section->ID, 'status', true) ?: 'pending';
+        $assignee_id = get_post_meta($section->ID, 'section_assignee', true) ?: get_post_meta($section->ID, 'assignee_id', true);
         $expertise_status = get_post_meta($section->ID, 'expertise_status', true);
         
         if ($section_status === 'completed') $completed++;
@@ -78,10 +94,13 @@ function prokb_format_project($project, $detailed = false) {
         $section_data = array(
             'id'              => $section->ID,
             'code'            => get_post_meta($section->ID, 'section_code', true) ?: $section->post_title,
-            'description'     => get_post_meta($section->ID, 'description', true),
+            'title'           => $section->post_title,
+            'description'     => get_post_meta($section->ID, 'section_description', true) ?: get_post_meta($section->ID, 'description', true),
             'status'          => $section_status,
             'assignee_id'     => $assignee_id,
             'assignee'        => $assignee_id ? prokb_get_user_data($assignee_id) : null,
+            'deadline'        => get_post_meta($section->ID, 'section_deadline', true),
+            'progress'        => get_post_meta($section->ID, 'section_progress', true) ?: 0,
             'started_at'      => get_post_meta($section->ID, 'started_at', true),
             'completed_at'    => get_post_meta($section->ID, 'completed_at', true),
             'expertise_status'=> $expertise_status,
@@ -97,17 +116,18 @@ function prokb_format_project($project, $detailed = false) {
     $data = array(
         'id'                => $id,
         'name'              => $project->post_title,
-        'address'           => get_post_meta($id, 'address', true),
-        'type'              => get_post_meta($id, 'type', true) ?: 'construction',
-        'deadline'          => get_post_meta($id, 'deadline', true),
+        'address'           => get_post_meta($id, 'project_address', true) ?: get_post_meta($id, 'address', true),
+        'type'              => get_post_meta($id, 'project_type', true) ?: get_post_meta($id, 'type', true) ?: 'construction',
+        'deadline'          => get_post_meta($id, 'project_deadline', true) ?: get_post_meta($id, 'deadline', true),
         'customer_contact'  => get_post_meta($id, 'customer_contact', true),
         'customer_phone'    => get_post_meta($id, 'customer_phone', true),
+        'client'            => get_post_meta($id, 'project_client', true),
+        'code'              => get_post_meta($id, 'project_code', true) ?: get_post_meta($id, 'code', true),
         'expertise'         => get_post_meta($id, 'expertise', true) ?: 'none',
         'status'            => $status,
         'gip_id'            => $gip_id,
         'gip'               => $gip_id ? prokb_get_user_data($gip_id) : null,
-        'code'              => get_post_meta($id, 'code', true),
-        'description'       => get_post_meta($id, 'description', true),
+        'description'       => get_post_meta($id, 'project_description', true) ?: get_post_meta($id, 'description', true),
         'created_at'        => get_the_date('d.m.Y', $id),
         'sections'          => $sections_data,
         'sections_total'    => $total_sections,
@@ -126,19 +146,28 @@ function prokb_format_project($project, $detailed = false) {
         $contacts = get_posts(array(
             'post_type'      => 'prokb_contact',
             'posts_per_page' => -1,
-            'meta_key'       => 'project_id',
+            'meta_key'       => 'contact_project',
             'meta_value'     => $id,
         ));
+        
+        if (empty($contacts)) {
+            $contacts = get_posts(array(
+                'post_type'      => 'prokb_contact',
+                'posts_per_page' => -1,
+                'meta_key'       => 'project_id',
+                'meta_value'     => $id,
+            ));
+        }
         
         $data['contact_persons'] = array();
         foreach ($contacts as $contact) {
             $data['contact_persons'][] = array(
                 'id'       => $contact->ID,
                 'name'     => $contact->post_title,
-                'position' => get_post_meta($contact->ID, 'position', true),
-                'company'  => get_post_meta($contact->ID, 'company', true),
-                'phone'    => get_post_meta($contact->ID, 'phone', true),
-                'email'    => get_post_meta($contact->ID, 'email', true),
+                'position' => get_post_meta($contact->ID, 'contact_position', true) ?: get_post_meta($contact->ID, 'position', true),
+                'company'  => get_post_meta($contact->ID, 'contact_company', true) ?: get_post_meta($contact->ID, 'company', true),
+                'phone'    => get_post_meta($contact->ID, 'contact_phone', true) ?: get_post_meta($contact->ID, 'phone', true),
+                'email'    => get_post_meta($contact->ID, 'contact_email', true) ?: get_post_meta($contact->ID, 'email', true),
                 'notes'    => get_post_meta($contact->ID, 'notes', true),
             );
         }
@@ -251,20 +280,21 @@ function prokb_format_project($project, $detailed = false) {
  * Форматирование задачи
  */
 function prokb_format_task($task) {
-    $assignee_id = get_post_meta($task->ID, 'assignee_id', true);
-    $project_id = get_post_meta($task->ID, 'project_id', true);
+    $assignee_id = get_post_meta($task->ID, 'task_assignee', true) ?: get_post_meta($task->ID, 'assignee_id', true);
+    $project_id = get_post_meta($task->ID, 'task_project', true) ?: get_post_meta($task->ID, 'project_id', true);
     
     return array(
         'id'          => $task->ID,
         'title'       => $task->post_title,
-        'description' => $task->post_content,
+        'description' => get_post_meta($task->ID, 'task_description', true) ?: $task->post_content,
         'project_id'  => $project_id,
+        'section_id'  => $task->post_parent,
         'assignee_id' => $assignee_id,
         'assignee'    => $assignee_id ? prokb_get_user_data($assignee_id) : null,
         'author'      => prokb_get_user_data($task->post_author),
-        'deadline'    => get_post_meta($task->ID, 'deadline', true),
-        'priority'    => get_post_meta($task->ID, 'priority', true) ?: 'medium',
-        'status'      => get_post_meta($task->ID, 'status', true) ?: 'not_started',
+        'deadline'    => get_post_meta($task->ID, 'task_deadline', true) ?: get_post_meta($task->ID, 'deadline', true),
+        'priority'    => get_post_meta($task->ID, 'task_priority', true) ?: get_post_meta($task->ID, 'priority', true) ?: 'medium',
+        'status'      => get_post_meta($task->ID, 'task_status', true) ?: get_post_meta($task->ID, 'status', true) ?: 'pending',
         'created_at'  => get_the_date('d.m.Y H:i', $task),
     );
 }
@@ -275,7 +305,7 @@ function prokb_format_task($task) {
 function prokb_format_message($message) {
     return array(
         'id'         => $message->ID,
-        'content'    => $message->post_content,
+        'content'    => get_post_meta($message->ID, 'message_content', true) ?: $message->post_content,
         'author'     => prokb_get_user_data($message->post_author),
         'date'       => get_the_date('d.m.Y H:i', $message),
         'is_critical'=> get_post_meta($message->ID, 'is_critical', true),
@@ -292,12 +322,14 @@ function prokb_create_notification($user_id, $type, $message, $link_id = 0) {
         'post_type'    => 'prokb_notification',
         'post_title'   => $message,
         'post_status'  => 'publish',
+        'post_author'  => $user_id,
     ));
     
-    update_post_meta($notification_id, 'user_id', $user_id);
-    update_post_meta($notification_id, 'type', $type);
-    update_post_meta($notification_id, 'link', $link_id);
-    update_post_meta($notification_id, 'is_read', false);
+    update_post_meta($notification_id, 'notification_user', $user_id);
+    update_post_meta($notification_id, 'notification_type', $type);
+    update_post_meta($notification_id, 'notification_link', $link_id);
+    update_post_meta($notification_id, 'notification_read', false);
+    update_post_meta($notification_id, 'notification_date', current_time('mysql'));
     
     return $notification_id;
 }
@@ -322,6 +354,7 @@ function prokb_get_section_description($code) {
         'ПОС' => 'Проект организации строительства',
         'ПОД' => 'Проект организации дорожного движения',
         'ОДИ' => 'Охрана дорожного движения',
+        'ОВиК'=> 'Отопление, вентиляция и кондиционирование',
     );
     
     return isset($descriptions[$code]) ? $descriptions[$code] : $code;
