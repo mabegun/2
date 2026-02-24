@@ -21,7 +21,7 @@ function prokb_ajax_get_employees() {
     
     $user_id = get_current_user_id();
     $prokb_role = function_exists('prokb_get_user_role') ? prokb_get_user_role($user_id) : get_user_meta($user_id, 'prokb_role', true);
-    $show_archived = $_POST['show_archived'] === 'true';
+    $show_archived = isset($_POST['show_archived']) && $_POST['show_archived'] === 'true';
     
     // Только директор и ГИП могут видеть всех сотрудников
     if (!in_array($prokb_role, array('director', 'gip'))) {
@@ -82,7 +82,7 @@ function prokb_ajax_get_employee_profile() {
         wp_send_json_error(array('message' => 'Пользователь не найден'));
     }
     
-    // Получаем разделы, назначенные сотруднику (как дочерние посты проектов)
+    // Получаем разделы, назначенные сотруднику
     $sections = get_posts(array(
         'post_type'      => 'prokb_section',
         'posts_per_page' => -1,
@@ -135,9 +135,32 @@ function prokb_ajax_get_employee_profile() {
         }
     }
     
-    $user_data['projects'] = $projects;
+    // Получаем комментарии к сотруднику
+    $comments = get_posts(array(
+        'post_type'      => 'prokb_employee_comment',
+        'posts_per_page' => -1,
+        'meta_key'       => 'employee_id',
+        'meta_value'     => $employee_id,
+        'orderby'        => 'date',
+        'order'          => 'DESC',
+    ));
     
-    wp_send_json_success($user_data);
+    $comments_data = array();
+    foreach ($comments as $comment) {
+        $comments_data[] = array(
+            'id'      => $comment->ID,
+            'content' => $comment->post_content,
+            'author'  => prokb_get_user_data($comment->post_author),
+            'date'    => get_the_date('d.m.Y', $comment),
+        );
+    }
+    
+    // Возвращаем в правильной структуре для JS
+    wp_send_json_success(array(
+        'employee' => $user_data,
+        'projects' => $projects,
+        'comments' => $comments_data,
+    ));
 }
 add_action('wp_ajax_prokb_get_employee_profile', 'prokb_ajax_get_employee_profile');
 
@@ -219,12 +242,10 @@ function prokb_ajax_create_employee() {
     update_user_meta($new_user_id, 'prokb_competencies', json_encode($competencies));
     update_user_meta($new_user_id, 'prokb_avatar_color', sprintf('#%06X', mt_rand(0, 0xFFFFFF)));
     
-    // TODO: Отправить email с паролем новому сотруднику
-    
     wp_send_json_success(array(
         'message'     => 'Сотрудник создан',
         'employee_id' => $new_user_id,
-        'password'    => $password, // Временно возвращаем пароль для демо
+        'password'    => $password,
     ));
 }
 add_action('wp_ajax_prokb_create_employee', 'prokb_ajax_create_employee');
@@ -368,3 +389,44 @@ function prokb_ajax_restore_employee() {
     wp_send_json_success(array('message' => 'Сотрудник восстановлен'));
 }
 add_action('wp_ajax_prokb_restore_employee', 'prokb_ajax_restore_employee');
+
+/**
+ * Добавить комментарий к сотруднику
+ */
+function prokb_ajax_add_employee_comment() {
+    check_ajax_referer('prokb_nonce', 'nonce');
+    
+    if (!is_user_logged_in()) {
+        wp_send_json_error(array('message' => 'Не авторизован'));
+    }
+    
+    $user_id = get_current_user_id();
+    $prokb_role = function_exists('prokb_get_user_role') ? prokb_get_user_role($user_id) : get_user_meta($user_id, 'prokb_role', true);
+    
+    if (!in_array($prokb_role, array('director', 'gip'))) {
+        wp_send_json_error(array('message' => 'Нет прав для добавления'));
+    }
+    
+    $employee_id = intval($_POST['employee_id'] ?? 0);
+    $content = sanitize_textarea_field($_POST['content'] ?? '');
+    
+    if (!$employee_id || empty($content)) {
+        wp_send_json_error(array('message' => 'Обязательные поля не заполнены'));
+    }
+    
+    $comment_id = wp_insert_post(array(
+        'post_type'    => 'prokb_employee_comment',
+        'post_title'   => 'Комментарий',
+        'post_content' => $content,
+        'post_status'  => 'publish',
+        'post_author'  => $user_id,
+    ));
+    
+    update_post_meta($comment_id, 'employee_id', $employee_id);
+    
+    wp_send_json_success(array(
+        'message'    => 'Комментарий добавлен',
+        'comment_id' => $comment_id,
+    ));
+}
+add_action('wp_ajax_prokb_add_employee_comment', 'prokb_ajax_add_employee_comment');
