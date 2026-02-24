@@ -374,7 +374,34 @@ function prokb_create_demo_data() {
         ),
     ));
     
-    // === 7. СОЗДАЁМ КОНТАКТЫ ===
+    // === 7. СОЗДАЁМ СТАНДАРТНЫЕ ИЗЫСКАНИЯ ===
+    
+    $standard_investigations = array(
+        'Инженерно-геодезические изыскания',
+        'Инженерно-геологические изыскания',
+        'Инженерно-гидрометеорологические изыскания',
+        'Инженерно-экологические изыскания',
+        'Обследование строительных конструкций',
+    );
+    
+    foreach ($standard_investigations as $inv_name) {
+        // Проверяем, существует ли уже
+        $existing = get_posts(array(
+            'post_type' => 'prokb_standard_investigation',
+            'title' => $inv_name,
+            'posts_per_page' => 1,
+        ));
+        
+        if (empty($existing)) {
+            wp_insert_post(array(
+                'post_type' => 'prokb_standard_investigation',
+                'post_title' => $inv_name,
+                'post_status' => 'publish',
+            ));
+        }
+    }
+    
+    // === 8. СОЗДАЁМ КОНТАКТЫ ===
     
     wp_insert_post(array(
         'post_type' => 'prokb_contact',
@@ -414,7 +441,20 @@ function prokb_reset_demo_data() {
     }
     
     // Удаляем все записи кастомных типов
-    $post_types = array('prokb_project', 'prokb_section', 'prokb_task', 'prokb_message', 'prokb_file', 'prokb_notification', 'prokb_contact');
+    $post_types = array(
+        'prokb_project', 
+        'prokb_section', 
+        'prokb_task', 
+        'prokb_message', 
+        'prokb_file', 
+        'prokb_notification', 
+        'prokb_contact',
+        'prokb_intro_block',
+        'prokb_project_investigation',
+        'prokb_project_expertise',
+        'prokb_expertise_remark',
+        'prokb_employee_comment',
+    );
     
     foreach ($post_types as $post_type) {
         $posts = get_posts(array(
