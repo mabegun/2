@@ -45,7 +45,7 @@ function prokb_ajax_add_project_expertise() {
     }
     
     $user_id = get_current_user_id();
-    $prokb_role = get_user_meta($user_id, 'prokb_role', true);
+    $prokb_role = function_exists('prokb_get_user_role') ? prokb_get_user_role($user_id) : get_user_meta($user_id, 'prokb_role', true);
     
     if (!in_array($prokb_role, array('director', 'gip'))) {
         wp_send_json_error(array('message' => 'Нет прав для добавления'));
@@ -157,7 +157,7 @@ function prokb_ajax_add_expertise_remark() {
     }
     
     $user_id = get_current_user_id();
-    $prokb_role = get_user_meta($user_id, 'prokb_role', true);
+    $prokb_role = function_exists('prokb_get_user_role') ? prokb_get_user_role($user_id) : get_user_meta($user_id, 'prokb_role', true);
     
     if (!in_array($prokb_role, array('director', 'gip'))) {
         wp_send_json_error(array('message' => 'Нет прав для добавления'));
@@ -235,7 +235,7 @@ function prokb_ajax_upload_positive_conclusion() {
     }
     
     $user_id = get_current_user_id();
-    $prokb_role = get_user_meta($user_id, 'prokb_role', true);
+    $prokb_role = function_exists('prokb_get_user_role') ? prokb_get_user_role($user_id) : get_user_meta($user_id, 'prokb_role', true);
     
     if (!in_array($prokb_role, array('director', 'gip'))) {
         wp_send_json_error(array('message' => 'Нет прав для загрузки'));
