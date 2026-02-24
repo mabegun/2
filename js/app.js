@@ -801,6 +801,7 @@
         // Кнопка добавления
         if (App.elements.addIntroBlockBtn) {
             App.elements.addIntroBlockBtn.onclick = () => showModal('add-intro-block-modal');
+        App.elements.addIntroBlockBtn.classList.remove('hidden');
         }
     }
 
@@ -832,6 +833,7 @@
         
         if (App.elements.addContactBtn) {
             App.elements.addContactBtn.onclick = () => showModal('add-contact-modal');
+        App.elements.addContactBtn.classList.remove('hidden');
         }
     }
 
