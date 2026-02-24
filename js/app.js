@@ -854,7 +854,7 @@
             App.elements.investigationsList.innerHTML = '<div class="empty-state"><p>Нет изысканий</p></div>';
         } else {
             App.elements.investigationsList.innerHTML = project.investigations.map(inv => `
-                <div class="card p-5">
+                <div class="card p-5 cursor-pointer hover:border-blue-200" onclick="ProKBOpenTask(${task.id})">
                     <div class="flex justify-between items-start mb-4">
                         <div>
                             <h4 class="font-semibold text-slate-800">${escapeHtml(inv.name)}</h4>
@@ -1001,7 +1001,7 @@
         // Этапы экспертизы
         const expertisesHtml = project.expertises && project.expertises.length > 0
             ? project.expertises.map(exp => `
-                <div class="card p-5">
+                <div class="card p-5 cursor-pointer hover:border-blue-200" onclick="ProKBOpenTask(${task.id})">
                     <div class="flex justify-between items-start mb-4">
                         <h4 class="font-semibold text-slate-800">${escapeHtml(exp.stage_name)}</h4>
                         ${isManagement ? `<button onclick="ProKBDeleteExpertise(${exp.id})" class="text-red-500 hover:text-red-700 text-sm">Удалить</button>` : ''}
@@ -1421,7 +1421,7 @@
             const project = App.projects.find(p => p.id === task.project_id);
             
             return `
-                <div class="card p-5">
+                <div class="card p-5 cursor-pointer hover:border-blue-200" onclick="ProKBOpenTask(${task.id})">
                     <div class="flex justify-between items-start">
                         <div class="flex-1 min-w-0">
                             <h3 class="font-medium text-slate-800">${escapeHtml(task.title)}</h3>
@@ -1452,6 +1452,48 @@
     // ============================================================================
     // АДМИН-ПАНЕЛЬ
     // ============================================================================
+
+
+    function openTask(taskId) {
+        apiRequest('get_task', { task_id: taskId })
+            .then(response => {
+                if (response.success) {
+                    App.currentTask = response.data;
+                    renderTaskModal();
+                    showModal('task-modal');
+                }
+            })
+            .catch(() => showToast('Ошибка загрузки задачи', 'error'));
+    }
+
+    function renderTaskModal() {
+        const task = App.currentTask;
+        const isManagement = App.user.role === 'director' || App.user.role === 'gip';
+        const isAssignee = task.assignee && task.assignee.id === App.user.id;
+        
+        document.getElementById('task-modal-title').textContent = task.title;
+        document.getElementById('task-modal-status').value = task.status;
+        document.getElementById('task-modal-priority').value = task.priority;
+        document.getElementById('task-modal-deadline').textContent = task.deadline || 'Не указан';
+        document.getElementById('task-modal-description').textContent = task.description || 'Нет описания';
+        document.getElementById('task-modal-assignee').textContent = task.assignee ? task.assignee.name : 'Не назначен';
+        document.getElementById('task-modal-author').textContent = task.author ? task.author.name : '';
+        
+        // Кнопки
+        document.getElementById('task-edit-btn').classList.toggle('hidden', !isManagement && !isAssignee);
+        
+        // Комментарии
+        const commentsHtml = (task.comments || []).map(c => `
+            <div class="p-3 rounded-lg bg-slate-50">
+                <div class="flex justify-between items-start mb-1">
+                    <span class="text-sm font-medium">${c.author ? c.author.name : ''}</span>
+                    <span class="text-xs text-slate-400">${c.date}</span>
+                </div>
+                <p class="text-sm text-slate-600">${escapeHtml(c.content)}</p>
+            </div>
+        `).join('');
+        document.getElementById('task-comments').innerHTML = commentsHtml || '<p class="text-sm text-slate-400">Нет комментариев</p>';
+    }
 
     function loadDesignSections() {
         apiRequest('get_design_sections')
@@ -2128,3 +2170,93 @@
     document.addEventListener('DOMContentLoaded', init);
 
 })();
+
+// Глобальные функции для вызова из HTML
+window.ProKBOpenTask = function(taskId) { openTask(taskId); };
+window.ProKBUpdateTaskStatus = function(taskId, status) {
+    apiRequest('update_task_status', { task_id: taskId, status: status })
+        .then(() => {
+            loadTasks();
+            if (App.currentTask && App.currentTask.id === taskId) {
+                App.currentTask.status = status;
+                renderTaskModal();
+            }
+            showToast('Статус обновлён', 'success');
+        });
+};
+window.ProKBDeleteTask = function(taskId) {
+    if (confirm('Удалить задачу?')) {
+        apiRequest('delete_task', { task_id: taskId })
+            .then(() => {
+                closeModals();
+                loadTasks();
+                showToast('Задача удалена', 'success');
+            });
+    }
+};
+window.ProKBAddTaskComment = function(taskId, content) {
+    apiRequest('add_task_comment', { task_id: taskId, content: content })
+        .then(response => {
+            if (response.success && App.currentTask) {
+                App.currentTask.comments = App.currentTask.comments || [];
+                App.currentTask.comments.push(response.data.comment);
+                renderTaskModal();
+                showToast('Комментарий добавлен', 'success');
+            }
+        });
+};
+window.ProKBDeleteContact = function(contactId) {
+    if (confirm('Удалить контакт?')) {
+        apiRequest('delete_contact', { contact_id: contactId })
+            .then(() => {
+                App.currentProject.contact_persons = App.currentProject.contact_persons.filter(c => c.id !== contactId);
+                renderContactPersons();
+                showToast('Контакт удалён', 'success');
+            });
+    }
+};
+window.ProKBDeleteIntroBlock = function(blockId) {
+    if (confirm('Удалить блок?')) {
+        apiRequest('delete_intro_block', { block_id: blockId })
+            .then(() => {
+                App.currentProject.intro_blocks = App.currentProject.intro_blocks.filter(b => b.id !== blockId);
+                renderIntroBlocks();
+                showToast('Блок удалён', 'success');
+            });
+    }
+};
+window.ProKBDeleteInvestigation = function(invId) {
+    if (confirm('Удалить изыскание?')) {
+        apiRequest('delete_project_investigation', { inv_id: invId })
+            .then(() => {
+                App.currentProject.investigations = App.currentProject.investigations.filter(i => i.id !== invId);
+                renderInvestigations();
+                showToast('Изыскание удалено', 'success');
+            });
+    }
+};
+window.ProKBUpdateInvestigation = function(invId, field, value) {
+    apiRequest('update_project_investigation', { inv_id: invId, [field]: value })
+        .then(() => showToast('Сохранено', 'success'));
+};
+window.ProKBUpdateSectionStatus = function(sectionId, status) {
+    apiRequest('update_section_status', { section_id: sectionId, status: status })
+        .then(() => {
+            loadProject(App.currentProject.id);
+            showToast('Статус обновлён', 'success');
+        });
+};
+window.ProKBOpenEmployeeProfile = function(employeeId) {
+    openEmployeeProfile(employeeId);
+};
+window.ProKBAddDesignSection = function() {
+    const code = prompt('Код раздела (например, АР):');
+    const name = prompt('Название раздела:');
+    if (code && name) {
+        apiRequest('add_design_section', { code: code, name: name })
+            .then(() => {
+                loadDesignSections();
+                showToast('Раздел добавлен', 'success');
+            });
+    }
+};
