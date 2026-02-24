@@ -114,7 +114,7 @@ function prokb_create_demo_data() {
     ));
     
     if (!is_wp_error($project1_id)) {
-        update_post_meta($project1_id, 'project_status', 'active');
+        update_post_meta($project1_id, 'project_status', 'in_work');
         update_post_meta($project1_id, 'project_gip', $gip_id);
         update_post_meta($project1_id, 'project_deadline', date('Y-m-d', strtotime('+3 months')));
         update_post_meta($project1_id, 'project_address', 'г. Москва, ул. Солнечная, д. 15');
@@ -132,7 +132,7 @@ function prokb_create_demo_data() {
     ));
     
     if (!is_wp_error($project2_id)) {
-        update_post_meta($project2_id, 'project_status', 'active');
+        update_post_meta($project2_id, 'project_status', 'in_work');
         update_post_meta($project2_id, 'project_gip', $gip_id);
         update_post_meta($project2_id, 'project_deadline', date('Y-m-d', strtotime('+5 months')));
         update_post_meta($project2_id, 'project_address', 'г. Москва, ш. Энтузиастов, д. 50');
