@@ -97,7 +97,7 @@ function prokb_ajax_resolve_message() {
     }
     
     $user_id = get_current_user_id();
-    $prokb_role = get_user_meta($user_id, 'prokb_role', true);
+    $prokb_role = function_exists('prokb_get_user_role') ? prokb_get_user_role($user_id) : get_user_meta($user_id, 'prokb_role', true);
     
     $message_id = intval($_POST['message_id'] ?? 0);
     $resolved = $_POST['resolved'] === 'true' || $_POST['resolved'] === true;
